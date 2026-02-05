@@ -135,7 +135,6 @@ fi
 # ============================================================
 node << EOFNODE
 const fs = require('fs');
-
 const configPath = '/root/.clawdbot/clawdbot.json';
 console.log('Updating config at:', configPath);
 let config = {};
@@ -143,73 +142,58 @@ let config = {};
 try {
     config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 } catch (e) {
-    console.log('Starting with empty config');
+    config = {};
 }
 
-// Initialize core structures
+// Initialize structures
 config.agents = config.agents || {};
 config.agents.defaults = config.agents.defaults || {};
 config.agents.defaults.model = config.agents.defaults.model || {};
 config.agents.defaults.models = config.agents.defaults.models || {};
-config.gateway = config.gateway || {};
-config.channels = config.channels || {};
 config.models = config.models || {};
 config.models.providers = config.models.providers || {};
 
-// Gateway configuration
-config.gateway.port = 18789;
-config.gateway.mode = 'local';
-config.gateway.trustedProxies = ['10.1.0.0'];
+// 1. Gateway Settings
+config.gateway = { 
+    port: 18789, 
+    mode: 'local', 
+    trustedProxies: ['10.1.0.0'] 
+};
 
-// Set gateway token if provided
+// 2. Set gateway token if provided
 if (process.env.CLAWDBOT_GATEWAY_TOKEN) {
-    config.gateway.auth = config.gateway.auth || {};
-    config.gateway.auth.token = process.env.CLAWDBOT_GATEWAY_TOKEN;
+    config.gateway.auth = { token: process.env.CLAWDBOT_GATEWAY_TOKEN };
 }
 
-// Telegram configuration
-if (process.env.TELEGRAM_BOT_TOKEN) {
-    config.channels.telegram = config.channels.telegram || {};
-    config.channels.telegram.botToken = process.env.TELEGRAM_BOT_TOKEN;
-    config.channels.telegram.enabled = true;
-    config.channels.telegram.dm = config.channels.telegram.dm || {};
-    config.channels.telegram.dmPolicy = process.env.TELEGRAM_DM_POLICY || 'pairing';
-}
-
-// Detect provider by URL
-const baseUrl = (process.env.AI_GATEWAY_BASE_URL || process.env.GOOGLE_BASE_URL || process.env.ANTHROPIC_BASE_URL || '').replace(/\/+$/, '');
-const isOpenAI = baseUrl.endsWith('/openai');
-const isGoogle = baseUrl.endsWith('/google-ai') || baseUrl.endsWith('/google-vertex') || baseUrl.includes('google');
-
-// Configure Providers
-if (isGoogle) {
-    console.log('Configuring Google Gemini provider:', baseUrl);
+// 3. Define Google Provider with Default URL (Critical Fix)
+if (process.env.GOOGLE_API_KEY) {
+    const baseUrl = (process.env.AI_GATEWAY_BASE_URL || process.env.GOOGLE_BASE_URL || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
     config.models.providers.google = {
         baseUrl: baseUrl,
         api: 'google-ai-messages',
         models: [
-            { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash', contextWindow: 1000000 }
+            { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', contextWindow: 1000000 },
+            { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash Exp', contextWindow: 1000000 }
         ]
     };
-    config.agents.defaults.models['google/gemini-2.0-flash-exp'] = { alias: 'Gemini 2.0 Flash' };
-} else if (isOpenAI) {
-    console.log('Configuring OpenAI provider:', baseUrl);
-    config.models.providers.openai = {
-        baseUrl: baseUrl,
-        api: 'openai-responses',
-        models: [
-            { id: 'gpt-4.5-preview', name: 'GPT-4.5 Preview', contextWindow: 128000 }
-        ]
-    };
-    config.agents.defaults.models['openai/gpt-4.5-preview'] = { alias: 'GPT-4.5' };
+    config.agents.defaults.models['google/gemini-2.0-flash'] = { alias: 'Gemini 2.0' };
 }
 
-// FORCE Gemini 2.0 Flash as the primary model
-config.agents.defaults.model.primary = 'google/gemini-2.0-flash-exp';
+// 4. FORCE Stable Gemini 2.0 Flash as Primary
+config.agents.defaults.model.primary = 'google/gemini-2.0-flash';
 
-// Write updated config
+// 5. Telegram Settings
+if (process.env.TELEGRAM_BOT_TOKEN) {
+    config.channels = config.channels || {};
+    config.channels.telegram = {
+        botToken: process.env.TELEGRAM_BOT_TOKEN,
+        enabled: true,
+        dm: { dmPolicy: 'pairing' }
+    };
+}
+
 fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-console.log('Configuration updated successfully: Gemini is now primary');
+console.log('Configuration updated: Gemini 2.0 Flash is now primary with default URL');
 EOFNODE
 
 # ============================================================
