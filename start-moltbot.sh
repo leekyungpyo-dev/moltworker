@@ -133,45 +133,142 @@ fi
 # ============================================================
 # UPDATE CONFIG FROM ENVIRONMENT VARIABLES
 # ============================================================
-node << 'EOFNODE'
+node << EOFNODE
 const fs = require('fs');
-const path = require('path');
+
 const configPath = '/root/.clawdbot/clawdbot.json';
+console.log('Updating config at:', configPath);
+let config = {};
 
-// Initialize clean structure
-const config = {
-  agents: {
-    defaults: {
-      workspace: "/root/clawd",
-      model: { primary: "google/gemini-2.0-flash" },
-      models: {
-        "google/gemini-2.0-flash": { alias: "Gemini 2.0" }
-      }
-    }
-  },
-  models: {
-    providers: {
-      google: {
-        baseUrl: process.env.AI_GATEWAY_BASE_URL || "https://generativelanguage.googleapis.com",
-        api: "google-ai-messages",
-        models: [{ id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", contextWindow: 1000000 }]
-      }
-    }
-  },
-  gateway: { port: 18789, mode: "local", trustedProxies: ["10.1.0.0"] },
-  channels: {
-    telegram: {
-      botToken: process.env.TELEGRAM_BOT_TOKEN,
-      enabled: true,
-      dm: { dmPolicy: "pairing" }
-    }
-  }
-};
+try {
+    config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+} catch (e) {
+    console.log('Starting with empty config');
+}
 
-const dir = path.dirname(configPath);
-if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+// Ensure nested objects exist
+config.agents = config.agents || {};
+config.agents.defaults = config.agents.defaults || {};
+config.agents.defaults.model = config.agents.defaults.model || {};
+config.gateway = config.gateway || {};
+config.channels = config.channels || {};
+
+// Clean up any broken anthropic provider config from previous runs
+// (older versions didn't include required 'name' field)
+if (config.models?.providers?.anthropic?.models) {
+    const hasInvalidModels = config.models.providers.anthropic.models.some(m => !m.name);
+    if (hasInvalidModels) {
+        console.log('Removing broken anthropic provider config (missing model names)');
+        delete config.models.providers.anthropic;
+    }
+}
+
+
+
+// Gateway configuration
+config.gateway.port = 18789;
+config.gateway.mode = 'local';
+config.gateway.trustedProxies = ['10.1.0.0'];
+
+// Set gateway token if provided
+if (process.env.CLAWDBOT_GATEWAY_TOKEN) {
+    config.gateway.auth = config.gateway.auth || {};
+    config.gateway.auth.token = process.env.CLAWDBOT_GATEWAY_TOKEN;
+}
+
+// Allow insecure auth for dev mode
+if (process.env.CLAWDBOT_DEV_MODE === 'true') {
+    config.gateway.controlUi = config.gateway.controlUi || {};
+    config.gateway.controlUi.allowInsecureAuth = true;
+}
+
+// Telegram configuration
+if (process.env.TELEGRAM_BOT_TOKEN) {
+    config.channels.telegram = config.channels.telegram || {};
+    config.channels.telegram.botToken = process.env.TELEGRAM_BOT_TOKEN;
+    config.channels.telegram.enabled = true;
+    config.channels.telegram.dm = config.channels.telegram.dm || {};
+    config.channels.telegram.dmPolicy = process.env.TELEGRAM_DM_POLICY || 'pairing';
+}
+
+// Discord configuration
+if (process.env.DISCORD_BOT_TOKEN) {
+    config.channels.discord = config.channels.discord || {};
+    config.channels.discord.token = process.env.DISCORD_BOT_TOKEN;
+    config.channels.discord.enabled = true;
+    config.channels.discord.dm = config.channels.discord.dm || {};
+    config.channels.discord.dm.policy = process.env.DISCORD_DM_POLICY || 'pairing';
+}
+
+// Slack configuration
+if (process.env.SLACK_BOT_TOKEN && process.env.SLACK_APP_TOKEN) {
+    config.channels.slack = config.channels.slack || {};
+    config.channels.slack.botToken = process.env.SLACK_BOT_TOKEN;
+    config.channels.slack.appToken = process.env.SLACK_APP_TOKEN;
+    config.channels.slack.enabled = true;
+}
+
+// Base URL override (e.g., for Cloudflare AI Gateway)
+// Usage: Set AI_GATEWAY_BASE_URL or ANTHROPIC_BASE_URL to your endpoint like:
+//   https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/anthropic
+//   https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/openai
+const baseUrl = (process.env.AI_GATEWAY_BASE_URL || process.env.ANTHROPIC_BASE_URL || '').replace(/\/+$/, '');
+const isOpenAI = baseUrl.endsWith('/openai');
+
+if (isOpenAI) {
+    // Create custom openai provider config with baseUrl override
+    // Omit apiKey so moltbot falls back to OPENAI_API_KEY env var
+    console.log('Configuring OpenAI provider with base URL:', baseUrl);
+    config.models = config.models || {};
+    config.models.providers = config.models.providers || {};
+    config.models.providers.openai = {
+        baseUrl: baseUrl,
+        api: 'openai-responses',
+        models: [
+            { id: 'gpt-5.2', name: 'GPT-5.2', contextWindow: 200000 },
+            { id: 'gpt-5', name: 'GPT-5', contextWindow: 200000 },
+            { id: 'gpt-4.5-preview', name: 'GPT-4.5 Preview', contextWindow: 128000 },
+        ]
+    };
+    // Add models to the allowlist so they appear in /models
+    config.agents.defaults.models = config.agents.defaults.models || {};
+    config.agents.defaults.models['openai/gpt-5.2'] = { alias: 'GPT-5.2' };
+    config.agents.defaults.models['openai/gpt-5'] = { alias: 'GPT-5' };
+    config.agents.defaults.models['openai/gpt-4.5-preview'] = { alias: 'GPT-4.5' };
+    config.agents.defaults.model.primary = 'openai/gpt-5.2';
+} else if (baseUrl) {
+    console.log('Configuring Anthropic provider with base URL:', baseUrl);
+    config.models = config.models || {};
+    config.models.providers = config.models.providers || {};
+    const providerConfig = {
+        baseUrl: baseUrl,
+        api: 'anthropic-messages',
+        models: [
+            { id: 'claude-opus-4-5-20251101', name: 'Claude Opus 4.5', contextWindow: 200000 },
+            { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5', contextWindow: 200000 },
+            { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', contextWindow: 200000 },
+        ]
+    };
+    // Include API key in provider config if set (required when using custom baseUrl)
+    if (process.env.ANTHROPIC_API_KEY) {
+        providerConfig.apiKey = process.env.ANTHROPIC_API_KEY;
+    }
+    config.models.providers.anthropic = providerConfig;
+    // Add models to the allowlist so they appear in /models
+    config.agents.defaults.models = config.agents.defaults.models || {};
+    config.agents.defaults.models['anthropic/claude-opus-4-5-20251101'] = { alias: 'Opus 4.5' };
+    config.agents.defaults.models['anthropic/claude-sonnet-4-5-20250929'] = { alias: 'Sonnet 4.5' };
+    config.agents.defaults.models['anthropic/claude-haiku-4-5-20251001'] = { alias: 'Haiku 4.5' };
+    config.agents.defaults.model.primary = 'anthropic/claude-opus-4-5-20251101';
+} else {
+    // Default to Anthropic without custom base URL (uses built-in pi-ai catalog)
+    config.agents.defaults.model.primary = 'anthropic/claude-opus-4-5';
+}
+
+// Write updated config
 fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-console.log('SUCCESS: Gemini 2.0 config applied.');
+console.log('Configuration updated successfully');
+console.log('Config:', JSON.stringify(config, null, 2));
 EOFNODE
 
 # ============================================================
