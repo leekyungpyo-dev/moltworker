@@ -223,6 +223,7 @@ if (isGoogle) {
     config.models.providers = config.models.providers || {};
     const providerConfig = {
         api: 'google-generative-ai',
+        baseUrl: baseUrl || 'https://generativelanguage.googleapis.com/v1beta',
         models: [
             { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', contextWindow: 1048576 },
             { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite', contextWindow: 1048576 },
@@ -230,10 +231,6 @@ if (isGoogle) {
             { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', contextWindow: 2097152 },
         ]
     };
-    // Include baseUrl only if set (for AI Gateway)
-    if (baseUrl) {
-        providerConfig.baseUrl = baseUrl;
-    }
     // Include API key in provider config if set
     if (process.env.GOOGLE_API_KEY) {
         providerConfig.apiKey = process.env.GOOGLE_API_KEY;
