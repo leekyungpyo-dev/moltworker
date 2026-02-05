@@ -136,53 +136,41 @@ fi
 node << EOFNODE
 const fs = require('fs');
 const configPath = '/root/.clawdbot/clawdbot.json';
-console.log('Updating config at:', configPath);
 let config = {};
+try { config = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch (e) { config = {}; }
 
-try {
-    config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-} catch (e) {
-    config = {};
-}
-
-// Initialize structures
+// 1. Initialize Essential Structures
 config.agents = config.agents || {};
 config.agents.defaults = config.agents.defaults || {};
 config.agents.defaults.model = config.agents.defaults.model || {};
-config.agents.defaults.models = config.agents.defaults.models || {};
+config.agents.defaults.models = config.agents.defaults.models || {}; // This was empty!
 config.models = config.models || {};
 config.models.providers = config.models.providers || {};
 
-// 1. Gateway Settings
-config.gateway = { 
-    port: 18789, 
-    mode: 'local', 
-    trustedProxies: ['10.1.0.0'] 
+// 2. Gateway Settings
+config.gateway = { port: 18789, mode: 'local', trustedProxies: ['10.1.0.0'] };
+
+// 3. Define Google Provider & Model Map (CRITICAL FIX)
+// Explicitly define the model in the agents list so the bot knows it exists
+const googleBaseUrl = (process.env.AI_GATEWAY_BASE_URL || process.env.GOOGLE_BASE_URL || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
+
+config.models.providers.google = {
+    baseUrl: googleBaseUrl,
+    api: 'google-ai-messages',
+    models: [
+        { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', contextWindow: 1000000 }
+    ]
 };
 
-// 2. Set gateway token if provided
-if (process.env.CLAWDBOT_GATEWAY_TOKEN) {
-    config.gateway.auth = { token: process.env.CLAWDBOT_GATEWAY_TOKEN };
-}
+// Fill the missing 'models' map from image_dadb48.png
+config.agents.defaults.models['google/gemini-2.0-flash'] = { 
+    alias: 'Gemini 2.0' 
+};
 
-// 3. Define Google Provider with Default URL (Critical Fix)
-if (process.env.GOOGLE_API_KEY) {
-    const baseUrl = (process.env.AI_GATEWAY_BASE_URL || process.env.GOOGLE_BASE_URL || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
-    config.models.providers.google = {
-        baseUrl: baseUrl,
-        api: 'google-ai-messages',
-        models: [
-            { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', contextWindow: 1000000 },
-            { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash Exp', contextWindow: 1000000 }
-        ]
-    };
-    config.agents.defaults.models['google/gemini-2.0-flash'] = { alias: 'Gemini 2.0' };
-}
-
-// 4. FORCE Stable Gemini 2.0 Flash as Primary
+// 4. Set Primary Model
 config.agents.defaults.model.primary = 'google/gemini-2.0-flash';
 
-// 5. Telegram Settings
+// 5. Channel Settings (Telegram)
 if (process.env.TELEGRAM_BOT_TOKEN) {
     config.channels = config.channels || {};
     config.channels.telegram = {
@@ -192,8 +180,9 @@ if (process.env.TELEGRAM_BOT_TOKEN) {
     };
 }
 
+// Final Save
 fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-console.log('Configuration updated: Gemini 2.0 Flash is now primary with default URL');
+console.log('CRITICAL: Gemini model map populated and set as primary');
 EOFNODE
 
 # ============================================================
