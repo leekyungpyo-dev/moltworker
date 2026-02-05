@@ -214,15 +214,14 @@ if (process.env.SLACK_BOT_TOKEN && process.env.SLACK_APP_TOKEN) {
 //   https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/openai
 const baseUrl = (process.env.AI_GATEWAY_BASE_URL || process.env.ANTHROPIC_BASE_URL || '').replace(/\/+$/, '');
 const isOpenAI = baseUrl.endsWith('/openai');
-const isGoogle = baseUrl.endsWith('/google') || baseUrl.endsWith('/google-ai-studio');
+const isGoogle = baseUrl.endsWith('/google') || baseUrl.endsWith('/google-ai-studio') || process.env.GOOGLE_API_KEY;
 
 if (isGoogle) {
-    // Create custom Google provider config with baseUrl override
-    console.log('Configuring Google provider with base URL:', baseUrl);
+    // Create custom Google provider config (with or without baseUrl)
+    console.log('Configuring Google provider', baseUrl ? 'with base URL: ' + baseUrl : 'with direct API key');
     config.models = config.models || {};
     config.models.providers = config.models.providers || {};
     const providerConfig = {
-        baseUrl: baseUrl,
         api: 'google-generative-ai',
         models: [
             { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', contextWindow: 1048576 },
@@ -231,6 +230,10 @@ if (isGoogle) {
             { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', contextWindow: 2097152 },
         ]
     };
+    // Include baseUrl only if set (for AI Gateway)
+    if (baseUrl) {
+        providerConfig.baseUrl = baseUrl;
+    }
     // Include API key in provider config if set
     if (process.env.GOOGLE_API_KEY) {
         providerConfig.apiKey = process.env.GOOGLE_API_KEY;
