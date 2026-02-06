@@ -231,10 +231,7 @@ if (isGoogle) {
             { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', contextWindow: 2097152 },
         ]
     };
-    // Include API key in provider config if set (required for clawdbot to authenticate)
-    if (process.env.GOOGLE_API_KEY) {
-        providerConfig.apiKey = process.env.GOOGLE_API_KEY;
-    }
+    // Omit apiKey so moltbot falls back to GOOGLE_API_KEY env var
     config.models.providers.google = providerConfig;
     // Add models to the allowlist so they appear in /models
     config.agents.defaults.models = config.agents.defaults.models || {};
@@ -277,10 +274,7 @@ if (isGoogle) {
             { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', contextWindow: 200000 },
         ]
     };
-    // Include API key in provider config if set (required when using custom baseUrl)
-    if (process.env.ANTHROPIC_API_KEY) {
-        providerConfig.apiKey = process.env.ANTHROPIC_API_KEY;
-    }
+    // Omit apiKey so moltbot falls back to ANTHROPIC_API_KEY env var
     config.models.providers.anthropic = providerConfig;
     // Add models to the allowlist so they appear in /models
     config.agents.defaults.models = config.agents.defaults.models || {};
